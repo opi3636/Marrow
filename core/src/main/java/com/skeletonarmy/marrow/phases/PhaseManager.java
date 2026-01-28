@@ -15,39 +15,36 @@ import java.util.concurrent.TimeUnit;
 /**
  * Manages match phases and automatically transitions based on elapsed time.
  * <p>
- * Initialize with phases, then call {@link #update()} each loop iteration. Use
+ * Create an instance with phases, then call {@link #update()} each loop iteration. Use
  * {@link #getCurrentPhase()} for time-aware logic or {@link #addPhaseListener} for callbacks.
  * <p>
  * Typical usage:
  * <pre>
- * PhaseManager.init(this, new Phase("Auto", 30), new Phase("Park", 3));
+ * PhaseManager manager = new PhaseManager(this, new Phase("Auto", 30), new Phase("Park", 3));
  * while (opModeIsActive()) {
- *     PhaseManager.update();
- *     if (PhaseManager.isCurrentPhase("Park")) { ... }
+ *     manager.update();
+ *     if (manager.isCurrentPhase("Park")) { ... }
  * }
  * </pre>
  *
  * @see Phase
  */
 public class PhaseManager {
-    private static OpMode currentOpMode = null;
-    private static TimerEx matchTimer = null;
+    private final OpMode opMode;
+    private final TimerEx matchTimer;
 
     // Configured phases in order
-    private static final List<Phase> phases = new ArrayList<>();
+    private final List<Phase> phases;
 
     // Current state
-    private static int currentPhaseIndex = 0;
-    private static int previousPhaseIndex = -1;
-    private static Phase currentPhase = null;
+    private Phase currentPhase;
+    private Phase previousPhase;
 
     // Listeners
-    private static final List<PhaseListener> phaseListeners = new ArrayList<>();
-
-    private PhaseManager() {}
+    private final List<PhaseListener> phaseListeners;
 
     /**
-     * Initializes the manager with phases in order.
+     * Creates a phase manager with phases in order.
      * <p>
      * Call once before {@code waitForStart()}.
      *
@@ -55,24 +52,23 @@ public class PhaseManager {
      * @param phasesToRun phases to transition through in order
      * @throws IllegalArgumentException if no phases are provided
      */
-    public static void init(@NonNull OpMode opMode, @NonNull Phase... phasesToRun) {
+    public PhaseManager(@NonNull OpMode opMode, @NonNull Phase... phasesToRun) {
         if (phasesToRun.length == 0) {
             throw new IllegalArgumentException("At least one phase must be provided");
         }
 
-        currentOpMode = opMode;
-        matchTimer = new TimerEx(getTotalDuration(phasesToRun), TimeUnit.SECONDS);
-        phases.clear();
-        phases.addAll(Arrays.asList(phasesToRun));
-        currentPhaseIndex = 0;
-        previousPhaseIndex = -1;
-        currentPhase = phases.get(0);
+        this.opMode = opMode;
+        this.phases = new ArrayList<>(Arrays.asList(phasesToRun));
+        this.matchTimer = new TimerEx(getTotalDuration(phasesToRun), TimeUnit.SECONDS);
+        this.currentPhase = phases.get(0);
+        this.previousPhase = null;
+        this.phaseListeners = new ArrayList<>();
     }
 
     /**
      * Sums phase durations in seconds.
      */
-    private static double getTotalDuration(Phase[] phases) {
+    private static double getTotalDuration(@NonNull Phase[] phases) {
         double total = 0;
         for (Phase phase : phases) {
             total += phase.getDurationSeconds();
@@ -83,8 +79,8 @@ public class PhaseManager {
     /**
      * Updates the current phase based on elapsed time. Call once per loop.
      */
-    public static void update() {
-        if (currentOpMode == null || phases.isEmpty()) {
+    public void update() {
+        if (phases.isEmpty()) {
             return;
         }
 
@@ -107,63 +103,64 @@ public class PhaseManager {
 
         // Find which phase we're in based on elapsed time
         double timeAccumulated = 0;
-        for (int i = 0; i < phases.size(); i++) {
-            Phase phase = phases.get(i);
+        Phase newPhase = phases.get(0);
+        for (Phase phase : phases) {
             double phaseEnd = timeAccumulated + phase.getDurationSeconds();
 
-            if (elapsedSeconds < phaseEnd || i == phases.size() - 1) {
-                // We're in this phase (or stay on last phase if exceeded)
-                currentPhaseIndex = i;
-                currentPhase = phase;
+            if (elapsedSeconds < phaseEnd) {
+                newPhase = phase;
                 break;
             }
 
             timeAccumulated = phaseEnd;
+            newPhase = phase; // Stay on last phase if exceeded
         }
 
         // Notify listeners of phase transitions
-        if (currentPhaseIndex != previousPhaseIndex && previousPhaseIndex != -1) {
+        if (!newPhase.equals(currentPhase) && previousPhase != null) {
+            previousPhase = currentPhase;
+            currentPhase = newPhase;
             notifyPhaseChange();
+        } else if (previousPhase == null) {
+            previousPhase = currentPhase;
+            currentPhase = newPhase;
+        } else {
+            currentPhase = newPhase;
         }
-        previousPhaseIndex = currentPhaseIndex;
     }
 
     /**
      * Gets the current phase.
      */
-    public static @NonNull Phase getCurrentPhase() {
+    public @NonNull Phase getCurrentPhase() {
         return currentPhase != null ? currentPhase : phases.get(0);
     }
 
     /**
-     * Checks if the current phase matches the given phase (by name).
+     * Checks if the current phase matches the given phase (by reference).
      */
-    public static boolean isCurrentPhase(@NonNull Phase phase) {
+    public boolean isCurrentPhase(@NonNull Phase phase) {
         return getCurrentPhase().equals(phase);
     }
 
     /**
      * Checks if the current phase name matches the given name.
      */
-    public static boolean isCurrentPhase(@NonNull String phaseName) {
+    public boolean isCurrentPhase(@NonNull String phaseName) {
         return getCurrentPhase().getName().equals(phaseName);
     }
 
     /**
      * Gets elapsed time in seconds since the match started (0 if not started).
      */
-    public static double getElapsedTime() {
-        return matchTimer != null ? matchTimer.getElapsed() : 0;
+    public double getElapsedTime() {
+        return matchTimer.getElapsed();
     }
 
     /**
      * Gets remaining time in the match (in seconds).
      */
-    public static double getTimeRemaining() {
-        if (matchTimer == null) {
-            return getTotalMatchDuration();
-        }
-
+    public double getTimeRemaining() {
         double remaining = matchTimer.getRemaining();
         return Math.max(0, remaining);
     }
@@ -171,7 +168,7 @@ public class PhaseManager {
     /**
      * Gets remaining time in the current phase (in seconds).
      */
-    public static double getPhaseTimeRemaining() {
+    public double getPhaseTimeRemaining() {
         if (currentPhase == null || !matchTimer.isOn()) {
             return currentPhase != null ? currentPhase.getDurationSeconds() : 0;
         }
@@ -184,10 +181,13 @@ public class PhaseManager {
     /**
      * Calculates when the current phase started (elapsed seconds from match start).
      */
-    private static double getPhaseStartTime() {
+    private double getPhaseStartTime() {
         double start = 0;
-        for (int i = 0; i < currentPhaseIndex; i++) {
-            start += phases.get(i).getDurationSeconds();
+        for (Phase phase : phases) {
+            if (phase.equals(currentPhase)) {
+                break;
+            }
+            start += phase.getDurationSeconds();
         }
         return start;
     }
@@ -195,7 +195,7 @@ public class PhaseManager {
     /**
      * Gets total match duration (sum of all phase durations, in seconds).
      */
-    public static double getTotalMatchDuration() {
+    public double getTotalMatchDuration() {
         double total = 0;
         for (Phase phase : phases) {
             total += phase.getDurationSeconds();
@@ -206,33 +206,31 @@ public class PhaseManager {
     /**
      * Registers a listener to be notified on phase changes.
      */
-    public static void addPhaseListener(@NonNull PhaseListener listener) {
+    public void addPhaseListener(@NonNull PhaseListener listener) {
         phaseListeners.add(listener);
     }
 
     /**
      * Unregisters a phase listener.
      */
-    public static void removePhaseListener(@NonNull PhaseListener listener) {
+    public void removePhaseListener(@NonNull PhaseListener listener) {
         phaseListeners.remove(listener);
     }
 
     /**
      * Clears all phase listeners.
      */
-    public static void clearPhaseListeners() {
+    public void clearPhaseListeners() {
         phaseListeners.clear();
     }
 
-    private static void notifyPhaseChange() {
+    private void notifyPhaseChange() {
         for (PhaseListener listener : phaseListeners) {
             try {
                 listener.onPhaseEntered(currentPhase);
             } catch (Exception e) {
                 // Prevent listener exceptions from breaking the match
-                if (currentOpMode != null) {
-                    currentOpMode.telemetry.addLine("ERROR in phase listener: " + e.getMessage());
-                }
+                opMode.telemetry.addLine("ERROR in phase listener: " + e.getMessage());
             }
         }
     }

@@ -1,5 +1,6 @@
 package com.skeletonarmy.marrow.phases;
 
+import org.junit.Before;
 import org.junit.Test;
 
 import java.util.concurrent.TimeUnit;
@@ -7,6 +8,9 @@ import java.util.concurrent.TimeUnit;
 import static org.junit.Assert.*;
 
 public class PhaseTests {
+    private Phase autonomousPhase;
+    private Phase teleopPhase;
+    private Phase endgamePhase;
 
     @Test
     public void matchPhase_creation_withNameAndDuration() {
@@ -22,24 +26,16 @@ public class PhaseTests {
     }
 
     @Test
-    public void matchPhase_equality_sameNameAreEqual() {
-        Phase phase1 = new Phase("Autonomous", 30);
-        Phase phase2 = new Phase("Autonomous", 45);
-        assertEquals("Phases with same name should be equal", phase1, phase2);
+    public void matchPhase_equality_sameObjectAreEqual() {
+        Phase phase = new Phase("Autonomous", 30);
+        assertEquals("Same object should be equal to itself", phase, phase);
     }
 
     @Test
-    public void matchPhase_equality_differentNamesAreNotEqual() {
+    public void matchPhase_equality_differentObjectsAreNotEqual() {
         Phase phase1 = new Phase("Autonomous", 30);
-        Phase phase2 = new Phase("Teleop", 30);
-        assertNotEquals("Phases with different names should not be equal", phase1, phase2);
-    }
-
-    @Test
-    public void matchPhase_hashCode_sameForSameNames() {
-        Phase phase1 = new Phase("Autonomous", 30);
-        Phase phase2 = new Phase("Autonomous", 45);
-        assertEquals("Hash codes should match for same name", phase1.hashCode(), phase2.hashCode());
+        Phase phase2 = new Phase("Autonomous", 30);
+        assertNotEquals("Different objects should not be equal even with same name", phase1, phase2);
     }
 
     @Test
@@ -53,13 +49,9 @@ public class PhaseTests {
 
     @Test
     public void matchPhase_canCreateMultiplePhases() {
-        Phase auto = new Phase("Autonomous", 30);
-        Phase teleop = new Phase("Teleop", 120);
-        Phase endgame = new Phase("Endgame", 30);
-        
-        assertEquals("Auto", "Autonomous", auto.getName());
-        assertEquals("Teleop", "Teleop", teleop.getName());
-        assertEquals("Endgame", "Endgame", endgame.getName());
+        assertEquals("Auto", "Autonomous", autonomousPhase.getName());
+        assertEquals("Teleop", "Teleop", teleopPhase.getName());
+        assertEquals("Endgame", "Endgame", endgamePhase.getName());
     }
 
     @Test

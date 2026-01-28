@@ -88,19 +88,6 @@ public class Phase {
         return name;
     }
 
-    @Override
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        if (!(o instanceof Phase)) return false;
-        Phase that = (Phase) o;
-        return name.equals(that.name);
-    }
-
-    @Override
-    public int hashCode() {
-        return name.hashCode();
-    }
-
     /**
      * Converts a duration from the given time unit to seconds.
      *
